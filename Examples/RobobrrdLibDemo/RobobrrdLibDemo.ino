@@ -11,13 +11,12 @@
 
 
 #include <Arduino.h>
-#include <EEPROM_mgr.h>
 #include <Servo.h>
 #include <Streaming.h>
 #include "RobobrrdLib.h"
 
 
-EEPROM_item<RoboBrrd::Values> settings(RoboBrrd::DefaultValues);
+RoboBrrd::Values settings(RoboBrrd::DefaultValues);
 RoboBrrd robobrrd(RoboBrrd::DefaultPins, settings);
 
 
@@ -29,14 +28,6 @@ void setup()
   Serial << "Hello from RoboBrrd! SQUAWK! CHIRP! "
     "Beginning initialization... beep beep" << endl;
 
-  // At this point, the settings contain the default values.
-  // If you wish, you can retrieve the calibrated values from the
-  // EEPROM inside the Arduino by using EEPROM_mgr::RetrieveAll, but
-  // only if you stored them there at least once, of course!
-  //
-  // See the calibration example program for more information.
-  //EEPROM_mgr::RetrieveAll();
-  
   // Set up all the pins but don't attach the servos yet
   // otherwise they may move suddenly. They're also noisy while they're
   // attached, so this keeps the brrd quiet until we start moving
