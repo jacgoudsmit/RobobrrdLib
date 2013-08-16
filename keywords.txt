@@ -1,0 +1,84 @@
+RoboBrrd	KEYWORD1
+
+ServoSelect	KEYWORD2
+LWing	KEYWORD2
+RWing	KEYWORD2
+Beak	KEYWORD2
+NumServos	KEYWORD2
+
+Servos	KEYWORD2
+Servos_Left	KEYWORD2
+Servos_Right	KEYWORD2
+Servos_Beak	KEYWORD2
+Servos_Wings	KEYWORD2
+Servos_All	KEYWORD2
+
+Side	KEYWORD2
+Left	KEYWORD2
+Right	KEYWORD2
+NumSides	KEYWORD2
+
+Sides	KEYWORD2
+SidesLeft	KEYWORD2
+SidesRight	KEYWORD2
+SidesBoth	KEYWORD2
+
+RGB	KEYWORD2
+Red	KEYWORD2
+Green	KEYWORD2
+Blue	KEYWORD2
+NumRGB	KEYWORD2
+
+Pos	KEYWORD2
+Middle	KEYWORD2
+Upper	KEYWORD2
+Open	KEYWORD2
+Lower	KEYWORD2
+Closed	KEYWORD2
+NumPos	KEYWORD2
+
+m_pins	KEYWORD2
+m_values	KEYWORD2
+m_servo	KEYWORD2
+
+AttachServos	KEYWORD2
+DetachServos	KEYWORD2
+Move	KEYWORD2
+MoveExact	KEYWORD2
+
+AttachLeds	KEYWORD2
+LedOnOff	KEYWORD2
+LedBits	KEYWORD2
+Led	KEYWORD2
+
+AttachSpeaker	KEYWORD2
+Tone	KEYWORD2
+
+AttachLDRs	KEYWORD2
+GetLDR	KEYWORD2
+
+AttachThermometer	KEYWORD2
+GetCelsius	KEYWORD2
+C10toF10	KEYWORD2
+GetFahrenheit	KEYWORD2
+
+Attach	KEYWORD2
+
+
+
+Pins	KEYWORD1
+
+m_ledpin	KEYWORD2
+m_speakerpin	KEYWORD2
+m_servopin	KEYWORD2
+m_ldrpin	KEYWORD2
+m_thermometerpin	KEYWORD2
+DefaultPins	KEYWORD2
+
+
+
+Values	KEYWORD1
+
+m_servopos	KEYWORD2
+m_supply_mv	KEYWORD2
+DefaultValues	KEYWORD2
