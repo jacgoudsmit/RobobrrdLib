@@ -17,7 +17,33 @@
 #ifndef ROBOBRRDLIB_H
 #define ROBOBRRDLIB_H
 
+// Definitions for extra features
+#define ROBOBRRD_HAS_GPS
+#define ROBOBRRD_HAS_LCD
+
+#include <Arduino.h>
+
+/////////////////////////////////////////////////////////////////////////////
+// LIBRARY DEPENDENCIES
+//
+// To use this library, copy the following lines to your sketch, under the
+// #include <RobobrrdLib.h> directive.
+/////////////////////////////////////////////////////////////////////////////
+
 #include <Servo.h>
+
+#ifdef ROBOBRRD_HAS_GPS
+#include <SoftwareSerial.h>
+#include <TinyGPS.h> // http://arduiniana.org/libraries/tinygps/
+#include <Time.h> // http://www.pjrc.com/teensy/td_libs_Time.html
+#endif
+
+#ifdef ROBOBRRD_HAS_LCD
+#include <Wire.h>
+#include <Adafruit_MCP23017.h> // https://github.com/adafruit/Adafruit-MCP23017-Arduino-Library
+#include <Adafruit_RGBLCDShield.h> // https://github.com/adafruit/Adafruit-RGB-LCD-Shield-Library
+#endif
+
 
 /////////////////////////////////////////////////////////////////////////////
 // Robobrrd class
@@ -45,12 +71,12 @@ public:
   // Servo multi-selection enum
   enum Servos
   {
-    Servos_Left  = (1 << LWing),
-    Servos_Right = (1 << RWing),
-    Servos_Beak  = (1 << Beak ),
+    ServosLeft  = (1 << LWing),
+    ServosRight = (1 << RWing),
+    ServosBeak  = (1 << Beak ),
     
-    Servos_Wings = (Servos_Left  | Servos_Right),
-    Servos_All   = (Servos_Wings | Servos_Beak),
+    ServosWings = (ServosLeft  | ServosRight),
+    ServosAll   = (ServosWings | ServosBeak),
   };
 
   
@@ -105,6 +131,45 @@ public:
   };
 
 
+#ifdef ROBOBRRD_HAS_LCD
+  //-------------------------------------------------------------------------
+  // Single button
+  enum Button
+  {
+    BtnSelect  = 0,
+    BtnRight   = 1,
+    BtnDown    = 2,
+    BtnUp      = 3,
+    BtnLeft    = 4,
+    
+    NumButtons
+  };
+  
+  
+  //-------------------------------------------------------------------------
+  // Multiple buttons
+  enum Buttons
+  {
+    BtnsNone   = 0,
+    
+    BtnsLeft   = (1 << BtnLeft),
+    BtnsRight  = (1 << BtnRight),
+    BtnsUp     = (1 << BtnUp),
+    BtnsDown   = (1 << BtnDown),
+    BtnsSelect = (1 << BtnSelect),
+
+    // Some combinations I care about
+    // The ones that aren't mentioned here are still legal in functions that
+    // take an argument of this type; feel free to combine values with
+    // bitwise OR, or expand the enum type as required.
+    BtnsLeftRight = BtnsLeft | BtnsRight,
+    BtnsUpDown    = BtnsUp   | BtnsDown,
+    
+    BtnsAny    = BtnsLeft | BtnsRight | BtnsUp | BtnsDown | BtnsSelect,
+  };    
+#endif
+
+  
   //-------------------------------------------------------------------------
   // Pin assignments struct
 public:
@@ -115,6 +180,11 @@ public:
     byte m_servopin[NumServos];
     byte m_ldrpin[NumSides];
     byte m_thermometerpin;
+#ifdef ROBOBRRD_HAS_GPS
+    byte m_gps_outpin;
+    byte m_gps_inpin;
+#endif
+
   } static const DefaultPins;
 
 
@@ -125,6 +195,13 @@ public:
   {
     byte     m_servopos[NumServos][NumPos];
     unsigned m_supply_mv;
+#ifdef ROBOBRRD_HAS_GPS
+    int8_t   m_timezone;
+#endif
+#ifdef ROBOBRRD_HAS_LCD
+    byte     m_lcdrows;
+    byte     m_lcdcolumns;
+#endif
     
   } static DefaultValues;
 
@@ -138,6 +215,13 @@ public:
   const Pins &m_pins;
   Values &m_values;
   Servo m_servo[NumServos];
+#ifdef ROBOBRRD_HAS_GPS
+  SoftwareSerial m_gps_serial;
+  TinyGPS m_gps;
+#endif
+#ifdef ROBOBRRD_HAS_LCD
+  Adafruit_RGBLCDShield m_lcd;
+#endif
 
 
   //=========================================================================
@@ -147,11 +231,18 @@ public:
 
 public:
   RoboBrrd(
-    const Pins &pins, // Pin assignments, must remain valid at all times
-    Values &values) // Servo values, must remain valid, may be changed
+    Values &values = DefaultValues, // Calibration values, must remain valid, may be changed
+    const Pins &pins = DefaultPins) // Pin assignments, must remain valid at all times
   : m_pins(pins)
   , m_values(values)
   , m_servo()
+#ifdef ROBOBRRD_HAS_GPS
+  , m_gps_serial(m_pins.m_gps_inpin, m_pins.m_gps_outpin)
+  , m_gps()
+#endif
+#ifdef ROBOBRRD_HAS_LCD
+  , m_lcd()
+#endif
   {
   }
   
@@ -473,6 +564,7 @@ public:
     return (((unsigned long)analogRead(m_pins.m_thermometerpin) 
       * (unsigned long)m_values.m_supply_mv) >> 10) - 500;
   }
+
   
   // Convert tenths of Celsius to tenths of Fahrenheit
   // Provided as a separate function so that you don't have to take an 
@@ -484,6 +576,7 @@ public:
     // 32 F is 0 C, and each degree F is 5/9 of a degree C.
     return 320 + ((celsius * 9) / 5);
   }
+
   
   // Get thermometer value in tenths of degrees Fahrenheit
   // The library uses integer arithmetic only to minimize the size of the
@@ -498,6 +591,264 @@ public:
   }
   
   
+#ifdef ROBOBRRD_HAS_GPS
+  //=========================================================================
+  // GPS
+  //=========================================================================
+public:
+  // Attach GPS and turn it on
+  void AttachGPS()
+  {
+    // Nothing for now
+    // (In the future, commands may be sent to the GPS module here)
+    
+    // Factory reset
+    //m_gps_serial.println("$PMTK104*37");
+    
+    // send GPRMC and GPGGA
+    m_gps_serial.println(F("$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*28"));
+    
+    // send updates once per second
+    m_gps_serial.println(F("$PMTK220,1000*1F"));
+  }
+  
+
+  // Disconnect GPS (turn it off)
+  void DetachGPS()
+  {
+    // Nothing for now
+    // (In the future, commands may be sent to the GPS module here)
+  }
+
+  
+  // Get data from GPS until an NMEA sentence is received.
+  // Returns true if an update was received, false on timeout
+  // NOTE: The servos should be detached while doing this.
+  boolean GetGPS(unsigned long timeout)
+  {
+    m_gps_serial.begin(9600);
+    
+    boolean result = false;
+    unsigned long ts = millis();
+    
+    for(;;)
+    {
+      // Get characters from GPS serial port and feed them to the GPS parser.
+      // If there's nothing to read, test for timeout.
+      if (m_gps_serial.available())
+      {
+        if (m_gps.encode(m_gps_serial.read()))
+        {
+//Serial.println("Got GPS sentence");
+          unsigned long date;
+          unsigned long time;
+          
+          m_gps.get_datetime(&date, &time, NULL);
+          if ((date != TinyGPS::GPS_INVALID_DATE) && (time != TinyGPS::GPS_INVALID_TIME))
+          {
+//Serial.println("Got date and time");          
+            result = true;
+            break;
+          }
+        }
+      }
+      else
+      {
+        // If we received nothing, check for timeout
+        if (millis() - ts >= timeout)
+        {
+//Serial.println("GPS timeout");
+          break;
+        }
+      }
+      
+      // Didn't receive anything or didn't get a full sentence yet
+      // Wait for a millisecond to see if more data came in
+      delay(1);
+    }
+    
+    m_gps_serial.end();
+    
+    return result;
+  }
+  
+  
+  // Get UTC time from the GPS module if possible
+  boolean GetUTCTime(
+    int *pyear,
+    byte *pmonth,
+    byte *pday,
+    byte *phour,
+    byte *pminute,
+    byte *psecond,
+    unsigned long timeout = 3000,
+    unsigned long max_age = 500)
+  {
+    boolean result = false;
+    
+    if (GetGPS(timeout))
+    {
+      unsigned long age;
+
+      m_gps.crack_datetime(pyear, pmonth, pday, phour, pminute, psecond, NULL, &age);
+//Serial.print("Got UTC. Age=");
+//Serial.println(age);
+      if (age < max_age)
+      {
+//Serial.println("Success UTC");      
+        result = true;
+      }
+      else
+      {
+//Serial.println("GPS lost");
+        // GPS lost
+      }
+    }
+    else
+    {
+//Serial.println("GPS not received yet");
+      // No GPS data received (yet)
+    }
+    
+    return result;
+  }
+  
+
+  // Get UTC time from GPS as time_t type.
+  // If something went wrong, the function returns 0.
+  time_t GetUTCTime(
+    unsigned long timeout = 3000,
+    unsigned long max_age = 500)
+  {
+    time_t result = 0;
+    tmElements_t te;
+    int year;
+    
+    if (GetUTCTime(
+      &year,
+      &te.Month,
+      &te.Day,
+      &te.Hour,
+      &te.Minute,
+      &te.Second))
+    {
+      te.Year = CalendarYrToTm(year);
+      result = makeTime(te);
+    }
+
+/*    
+Serial.print("Current time is: ");
+Serial.print(te.Year);
+Serial.print("/");
+Serial.print(te.Month);
+Serial.print("/");
+Serial.print(te.Day);
+Serial.print(" ");
+Serial.print(te.Hour);
+Serial.print(":");
+Serial.print(te.Minute);
+Serial.print(":");
+Serial.print(te.Second);   
+Serial.print(" Got UTC=");
+Serial.println(result);
+*/
+    return result;
+  }
+
+  
+  // Get local time from GPS
+  // If something went wrong, the function returns 0.
+  time_t GetLocalTime(
+    unsigned long timeout = 3000,
+    unsigned long max_age = 500)
+  {
+    time_t result = GetUTCTime(timeout, max_age);
+    
+    if (result)
+    {
+      result += m_values.m_timezone * SECS_PER_HOUR;
+    }
+    
+//Serial.print("Local time=");
+//Serial.println(result);
+    return result;
+  }
+  
+  
+  // Static version of the above, needed by automatic time sync below
+  // Unfortunately the Time library doesn't use a callback parameter so we
+  // have to store the instance statically.
+  static RoboBrrd *timeprovider;
+  static time_t StaticLocalTime(void)
+  {
+    time_t result = 0;
+    
+    if (timeprovider)
+    {
+      result = timeprovider->GetLocalTime();
+      
+      // If GPS could not be synced, try again soon
+      if (!result)
+      {
+        setSyncInterval(0);
+      }
+      else
+      {
+        setSyncInterval(300);
+      }
+    }
+    
+//Serial.println("Auto update");
+    return result;
+  }
+  
+  
+  // Call this function to enable synchronization of the system time in the
+  // Time library with the GPS module.
+  // After calling this, you should make sure that the servos are always
+  // detached whenever you call a Time function; if not, the incoming
+  // serial traffic from the GPS module will interfere with the operation
+  // of the servos.
+  void EnableGPSTimeSync(void)
+  {
+    timeprovider = this;
+    setSyncProvider(StaticLocalTime);
+  }
+  
+  
+  // Disable automatic time synchronization
+  void DisableGPSTimeSync(void)
+  {
+    timeprovider = NULL;
+  }
+#endif
+  
+
+#ifdef ROBOBRRD_HAS_LCD  
+  //=========================================================================
+  // LCD
+  //=========================================================================
+public:
+  // Attach LCD
+  // The LCD is cleared and the backlight is turned off.
+  void AttachLCD()
+  {
+    m_lcd.begin(m_values.m_lcdcolumns, m_values.m_lcdrows);
+    m_lcd.setBacklight(0);
+    m_lcd.clear();
+  }
+
+  // Set backlight according to pattern
+  void Backlight(
+    boolean r,
+    boolean g,
+    boolean b)
+  {
+    m_lcd.setBacklight(
+      (r ? 1 : 0) | (g ? 2 : 0) | (b ? 4 : 0));
+  }
+#endif
+
   //=========================================================================
   // Miscellaneous
   //=========================================================================
@@ -506,7 +857,11 @@ public:
   // This should be called in the setup() routine of the sketch.
   // To avoid moving the servos, use false as parameter
   virtual void Attach(
-    boolean attachservos = true)
+    boolean attachservos = true
+#ifdef ROBOBRRD_HAS_GPS
+    ,boolean autogpssync = false // Don't make TRUE if attaching servos!
+#endif
+    )
   {
     if (attachservos)
     {
@@ -516,6 +871,19 @@ public:
     AttachSpeaker();
     AttachLDRs();
     AttachThermometer();
+#ifdef ROBOBRRD_HAS_GPS
+    AttachGPS();
+#endif
+#ifdef ROBOBRRD_HAS_LCD
+    AttachLCD();
+#endif
+
+#ifdef ROBOBRRD_HAS_GPS
+    if (autogpssync)
+    {
+      EnableGPSTimeSync();
+    }
+#endif
   }
 };
 

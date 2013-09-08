@@ -7,11 +7,11 @@ Beak	KEYWORD2
 NumServos	KEYWORD2
 
 Servos	KEYWORD2
-Servos_Left	KEYWORD2
-Servos_Right	KEYWORD2
-Servos_Beak	KEYWORD2
-Servos_Wings	KEYWORD2
-Servos_All	KEYWORD2
+ServosLeft	KEYWORD2
+ServosRight	KEYWORD2
+ServosBeak	KEYWORD2
+ServosWings	KEYWORD2
+ServosAll	KEYWORD2
 
 Side	KEYWORD2
 Left	KEYWORD2

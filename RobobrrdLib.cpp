@@ -30,6 +30,12 @@ const RoboBrrd::Pins RoboBrrd::DefaultPins =
   m_ldrpin:         { A0, A1 },
   
   m_thermometerpin: A2,
+  
+#ifdef ROBOBRRD_HAS_GPS
+  m_gps_outpin:     2,
+  m_gps_inpin:      3,
+#endif
+  
 };
 
 
@@ -41,13 +47,30 @@ RoboBrrd::Values RoboBrrd::DefaultValues =
 {
   m_servopos:
   {
-    { 90, 40, 140 },
-    { 90, 140, 40 },
-    { 90, 40, 140 },
+    { 90, 120,  60 },
+    { 90,  60, 120 },
+    { 90, 120,  60 },
   },
   
   m_supply_mv: 5000,
+  
+#ifdef ROBOBRRD_HAS_GPS
+  m_timezone: -7,
+#endif
+
+#ifdef ROBOBRRD_HAS_LCD
+  m_lcdrows: 2,
+  m_lcdcolumns: 16,
+#endif
+
 };
+
+
+#ifdef ROBOBRRD_HAS_GPS
+//---------------------------------------------------------------------------
+// Time provider
+RoboBrrd *RoboBrrd::timeprovider = NULL;
+#endif
 
 
 /*
