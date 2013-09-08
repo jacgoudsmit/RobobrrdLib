@@ -265,6 +265,8 @@ void demoBacklight()
 #ifdef ROBOBRRD_HAS_GPS
 void demoGPS()
 {
+  unsigned long lasttime = 0;
+  
   // -- GPS --
   Announce(false, "--GPS--");
 
@@ -274,11 +276,22 @@ void demoGPS()
   {
     if (timeStatus() != timeSet)
     {
-      Announce(true, "Time not set");
+      Announce(true, "Time not set (%u)", robobrrd.m_gps_state);
     }
     else
     {
-      breakTime(now(), tm);
+      unsigned long curtime;
+
+      for (;;)
+      {
+        if ((curtime = now()) != lasttime)
+        {
+          lasttime = curtime;
+          break;
+        }
+      }
+      
+      breakTime(curtime, tm);
 
       Announce(true, "%2u:%02u:%02u", tm.Hour, tm.Minute, tm.Second);
     }

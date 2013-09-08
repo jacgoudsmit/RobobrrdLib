@@ -21,6 +21,9 @@
 #define ROBOBRRD_HAS_GPS
 #define ROBOBRRD_HAS_LCD
 
+// Uncomment this to generate GPS logging
+//#define DEBUG_GPS
+
 #include <Arduino.h>
 
 /////////////////////////////////////////////////////////////////////////////
@@ -131,9 +134,27 @@ public:
   };
 
 
+#ifdef ROBOBRRD_HAS_GPS
+  //-------------------------------------------------------------------------
+  // GPS state
+public:
+  enum GPSState { 
+    GPSStateUnknown,
+    GPSStateOnline,
+    GPSStateData,
+    GPSStateValidData,
+    GPSStateGotTime,
+    GPSStateGotDate
+    // To be expanded...
+    
+  };
+#endif
+
+
 #ifdef ROBOBRRD_HAS_LCD
   //-------------------------------------------------------------------------
   // Single button
+public:
   enum Button
   {
     BtnSelect  = 0,
@@ -148,6 +169,7 @@ public:
   
   //-------------------------------------------------------------------------
   // Multiple buttons
+public:
   enum Buttons
   {
     BtnsNone   = 0,
@@ -175,14 +197,14 @@ public:
 public:
   struct Pins
   {
-    byte m_ledpin[NumSides][NumRGB];
-    byte m_speakerpin;
-    byte m_servopin[NumServos];
-    byte m_ldrpin[NumSides];
-    byte m_thermometerpin;
+    byte            m_ledpin[NumSides][NumRGB];
+    byte            m_speakerpin;
+    byte            m_servopin[NumServos];
+    byte            m_ldrpin[NumSides];
+    byte            m_thermometerpin;
 #ifdef ROBOBRRD_HAS_GPS
-    byte m_gps_outpin;
-    byte m_gps_inpin;
+    byte            m_gps_outpin;
+    byte            m_gps_inpin;
 #endif
 
   } static const DefaultPins;
@@ -193,14 +215,14 @@ public:
 public:
   struct Values
   {
-    byte     m_servopos[NumServos][NumPos];
-    unsigned m_supply_mv;
+    byte            m_servopos[NumServos][NumPos];
+    unsigned        m_supply_mv;
 #ifdef ROBOBRRD_HAS_GPS
-    int8_t   m_timezone;
+    int8_t          m_timezone;
 #endif
 #ifdef ROBOBRRD_HAS_LCD
-    byte     m_lcdrows;
-    byte     m_lcdcolumns;
+    byte            m_lcdrows;
+    byte            m_lcdcolumns;
 #endif
     
   } static DefaultValues;
@@ -212,12 +234,13 @@ public:
 
 
 public:
-  const Pins &m_pins;
-  Values &m_values;
-  Servo m_servo[NumServos];
+  const Pins       &m_pins;
+  Values           &m_values;
+  Servo             m_servo[NumServos];
 #ifdef ROBOBRRD_HAS_GPS
-  SoftwareSerial m_gps_serial;
-  TinyGPS m_gps;
+  GPSState          m_gps_state;
+  SoftwareSerial    m_gps_serial;
+  TinyGPS           m_gps;
 #endif
 #ifdef ROBOBRRD_HAS_LCD
   Adafruit_RGBLCDShield m_lcd;
@@ -237,6 +260,7 @@ public:
   , m_values(values)
   , m_servo()
 #ifdef ROBOBRRD_HAS_GPS
+  , m_gps_state(GPSStateUnknown)
   , m_gps_serial(m_pins.m_gps_inpin, m_pins.m_gps_outpin)
   , m_gps()
 #endif
@@ -592,9 +616,19 @@ public:
   
   
 #ifdef ROBOBRRD_HAS_GPS
+
+#ifdef DEBUG_GPS
+#define GPSLOG(x) Serial.print(x)
+#define GPSLOGLN(x) Serial.println(x)
+#else
+#define GPSLOG(x)
+#define GPSLOGLN(x)
+#endif
+
   //=========================================================================
   // GPS
   //=========================================================================
+
 public:
   // Attach GPS and turn it on
   void AttachGPS()
@@ -610,6 +644,11 @@ public:
     
     // send updates once per second
     m_gps_serial.println(F("$PMTK220,1000*1F"));
+    
+    // send updates 5x per second
+    //m_gps_serial.println(F("$PMTK220,200*2C"));
+    
+    m_gps_state = GPSStateOnline;
   }
   
 
@@ -618,6 +657,7 @@ public:
   {
     // Nothing for now
     // (In the future, commands may be sent to the GPS module here)
+    m_gps_state = GPSStateUnknown;
   }
 
   
@@ -635,18 +675,76 @@ public:
     {
       // Get characters from GPS serial port and feed them to the GPS parser.
       // If there's nothing to read, test for timeout.
-      if (m_gps_serial.available())
+      unsigned numavailable = m_gps_serial.available();
+      if (numavailable)
       {
-        if (m_gps.encode(m_gps_serial.read()))
+        if (m_gps_state < GPSStateData)
         {
-//Serial.println("Got GPS sentence");
+          m_gps_state = GPSStateData;
+        }
+
+        bool gotsentence = false;
+
+        // Stuff as much data into the GPS parser as possible to avoid losing
+        // data from the serial port
+        do
+        {
+          GPSLOG("."); // Inidicate that we're processing the receive buffer
+          for (int i = 0; i < numavailable; i++)
+          {
+            char c = m_gps_serial.read();
+            //GPSLOG(c); // Dump incoming data
+          
+            if (m_gps.encode(c))
+            {
+              GPSLOG("*"); // Indicate that we got the end of a sentence
+              gotsentence = true;
+              
+              // Note, we're not stopping here; keep reading until the GPS
+              // is "quiet" for a while.
+              // Experiments have shown that if we break out here, we often
+              // still don't have valid data because the GPS sends so much
+              // stuff that TinyGPS doesn't use. It's much more reliable to
+              // simply keep going until we detect the interval between
+              // updates instead.
+            }
+          }
+        
+          delay(1); // This seems to prevent framing errors
+          
+          // Check if there's more data available now
+          numavailable = m_gps_serial.available();
+          
+          // Quit the loop between updates from the GPS
+        } while (numavailable);
+        
+        GPSLOGLN("Parsing...");
+        
+        if (gotsentence)
+        {
+          if (m_gps_state < GPSStateValidData)
+          {
+            m_gps_state = GPSStateValidData;
+          }
+          
           unsigned long date;
           unsigned long time;
           
           m_gps.get_datetime(&date, &time, NULL);
-          if ((date != TinyGPS::GPS_INVALID_DATE) && (time != TinyGPS::GPS_INVALID_TIME))
+          
+          if ((time != TinyGPS::GPS_INVALID_TIME) && (m_gps_state < GPSStateGotTime))
           {
-//Serial.println("Got date and time");          
+            m_gps_state = GPSStateGotTime;
+            
+            if ((date != TinyGPS::GPS_INVALID_DATE) && (m_gps_state < GPSStateGotDate))
+            {
+              m_gps_state = GPSStateGotDate;
+            }
+          }
+            
+          if (m_gps_state >= GPSStateGotDate)
+          {
+            GPSLOGLN("Got date and time");          
             result = true;
             break;
           }
@@ -657,14 +755,10 @@ public:
         // If we received nothing, check for timeout
         if (millis() - ts >= timeout)
         {
-//Serial.println("GPS timeout");
+          GPSLOGLN("GPS timeout");
           break;
         }
       }
-      
-      // Didn't receive anything or didn't get a full sentence yet
-      // Wait for a millisecond to see if more data came in
-      delay(1);
     }
     
     m_gps_serial.end();
@@ -681,7 +775,7 @@ public:
     byte *phour,
     byte *pminute,
     byte *psecond,
-    unsigned long timeout = 3000,
+    unsigned long timeout = 1500,
     unsigned long max_age = 500)
   {
     boolean result = false;
@@ -691,23 +785,23 @@ public:
       unsigned long age;
 
       m_gps.crack_datetime(pyear, pmonth, pday, phour, pminute, psecond, NULL, &age);
-//Serial.print("Got UTC. Age=");
-//Serial.println(age);
+
+      GPSLOG("Got UTC. Age=");
+      GPSLOGLN(age);
+      
       if (age < max_age)
       {
-//Serial.println("Success UTC");      
+        GPSLOGLN("Success UTC");      
         result = true;
       }
       else
       {
-//Serial.println("GPS lost");
-        // GPS lost
+        GPSLOGLN("GPS lost");
       }
     }
     else
     {
-//Serial.println("GPS not received yet");
-      // No GPS data received (yet)
+      GPSLOGLN("GPS not received yet");
     }
     
     return result;
@@ -717,7 +811,7 @@ public:
   // Get UTC time from GPS as time_t type.
   // If something went wrong, the function returns 0.
   time_t GetUTCTime(
-    unsigned long timeout = 3000,
+    unsigned long timeout = 1500,
     unsigned long max_age = 500)
   {
     time_t result = 0;
@@ -730,28 +824,29 @@ public:
       &te.Day,
       &te.Hour,
       &te.Minute,
-      &te.Second))
+      &te.Second,
+      timeout,
+      max_age))
     {
       te.Year = CalendarYrToTm(year);
       result = makeTime(te);
     }
 
-/*    
-Serial.print("Current time is: ");
-Serial.print(te.Year);
-Serial.print("/");
-Serial.print(te.Month);
-Serial.print("/");
-Serial.print(te.Day);
-Serial.print(" ");
-Serial.print(te.Hour);
-Serial.print(":");
-Serial.print(te.Minute);
-Serial.print(":");
-Serial.print(te.Second);   
-Serial.print(" Got UTC=");
-Serial.println(result);
-*/
+    GPSLOG("Current time is: ");
+    GPSLOG(te.Year);
+    GPSLOG("/");
+    GPSLOG(te.Month);
+    GPSLOG("/");
+    GPSLOG(te.Day);
+    GPSLOG(" ");
+    GPSLOG(te.Hour);
+    GPSLOG(":");
+    GPSLOG(te.Minute);
+    GPSLOG(":");
+    GPSLOG(te.Second);   
+    GPSLOG(" Got UTC=");
+    GPSLOGLN(result);
+    
     return result;
   }
 
@@ -759,7 +854,7 @@ Serial.println(result);
   // Get local time from GPS
   // If something went wrong, the function returns 0.
   time_t GetLocalTime(
-    unsigned long timeout = 3000,
+    unsigned long timeout = 1000,
     unsigned long max_age = 500)
   {
     time_t result = GetUTCTime(timeout, max_age);
@@ -769,8 +864,9 @@ Serial.println(result);
       result += m_values.m_timezone * SECS_PER_HOUR;
     }
     
-//Serial.print("Local time=");
-//Serial.println(result);
+    GPSLOG("Local time=");
+    GPSLOGLN(result);
+    
     return result;
   }
   
@@ -785,20 +881,34 @@ Serial.println(result);
     
     if (timeprovider)
     {
-      result = timeprovider->GetLocalTime();
+      // If the time has not been set yet, wait longer to give up
+      // We can't call timeStatus() here, it would cause infinite recursion
+      // so we remember our previous result
+      static unsigned long timeout = 3000;
+
+      result = timeprovider->GetLocalTime(timeout);
       
       // If GPS could not be synced, try again soon
       if (!result)
       {
-        setSyncInterval(0);
+        // If that didn't work, try again after a second
+        setSyncInterval(1);
+        
+        // Wait extra long to get data
+        timeout = 3000;
       }
       else
       {
+        // If it worked, ask again after 5 minutes
         setSyncInterval(300);
+        
+        // No need to try very hard
+        timeout = 1000;
       }
     }
     
-//Serial.println("Auto update");
+    GPSLOGLN("Auto update called");
+    
     return result;
   }
   
